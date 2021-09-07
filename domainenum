@@ -1,0 +1,595 @@
+#!/bin/bash
+
+#################################################################
+# Script:           DomainEnum                                  #
+# Description:      Domain Enumeration Script                   #
+# Author:           Jeremy Box @pntha                           #
+# Date:             07-Sep-2021                                 #
+# Version:          1.0                                         #
+#                                                               #
+# Contributors:                                                 #
+#     pepperfield                                               #
+#    ________  ________   _________  ___  ___  ________         #
+#   |\   __  \|\   ___  \|\___   ___\\  \|\  \|\   __  \        #
+#   \ \  \|\  \ \  \\ \  \|___ \  \_\ \  \\\  \ \  \|\  \       #
+#    \ \   ____\ \  \\ \  \   \ \  \ \ \   __  \ \   __  \      #
+#     \ \  \___|\ \  \\ \  \   \ \  \ \ \  \ \  \ \  \ \  \     #
+#      \ \__\    \ \__\\ \__\   \ \__\ \ \__\ \__\ \__\ \__\    #
+#       \|__|     \|__| \|__|    \|__|  \|__|\|__|\|__|\|__|    #
+#                                                               #
+#################################################################
+
+
+##### DEBUGGING #####
+# set -x
+
+##### GLOBAL VARIABLES #####
+
+# General
+NAME="DomainEnum"
+PROGNAME="$(basename "${BASH_SOURCE[@]}")"
+VERS="1.0"
+
+# Arrays
+CMDS=(dig openssl tput whois)
+DEFAULTIFS=$IFS
+
+# Output Formatting
+MAGENTA=$(tput setaf 5)
+NOCOL=$(tput sgr0) # No Color
+
+# Input Variables
+DOMAIN=""
+NAMESERVER="1.1.1.1"
+
+# RegEx
+DOMREG="^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z0-9]+\$"
+
+# Error Outputs
+ERR_BADARG="unknown argument"
+ERR_BADDOM="domain supplied is not a valid domain"
+ERR_BADFLG="flags proceeding a domain should only be '-n' or '--nameserver'"
+ERR_BADIP="bad IPv4 address"
+ERR_INPUT="bad input"
+ERR_NODOM="no domain supplied"
+ERR_NONS="no nameserver supplied. Remove flag to use default nameserver"
+ERR_NUMARGS="too many arguments"
+
+##### GLOBAL FUNCTIONS #####
+
+error() {
+#   -------------------------------------------------------
+#   Function to custom handle errors
+#
+#   Errors caught will print error message and exit with
+#   either a custom exit code or default exit code. See
+#   usage.
+#       Arguments:
+#           lineno          Line number error occured on
+#           msg [Optional]  Custom error message
+#           code [Optional] Custom error code
+#       Usage:
+#           Use with 'trap' command or standalone call
+#           trap:
+#               trap 'error $LINENO' ERR
+#           standalone:
+#               error $LINENO "custom msg" 11
+#   -------------------------------------------------------
+    local code lineno msg
+
+    lineno="$1"
+    msg="$2"
+    code="${3:-1}"
+
+    # Below will format as:
+    #   Without $msg: "Error on or near line #; exiting with status #"
+    #   With $msg: "Error on or near line #: $msg; exiting with status #"
+    printf 'Error on or near line %s' "$lineno"
+    if [[ -n "$msg" ]]; then
+        printf '%s' ": $msg"
+    fi
+    printf '; exiting with status %s\n' "$code"
+
+    exit "$code"
+}
+
+formatHeading() {
+#   -------------------------------------------------------
+#   Function to center headings in an 80-column wide
+#   seperator, padded with a custom character
+#       Arguments:
+#           heading           Heading title
+#           character         Character to pad heading with
+#           colour [optional] Color to format heading
+#       Usage:
+#           formatHeading "Title with Color" "-" "$MAGENTA"
+#           formatHeading "Title without Color" "-"
+#   -------------------------------------------------------
+    local character color fheading fill heading length spacing
+
+    heading=$1
+    character=$2
+    color=$3
+    length=80
+    fheading=""
+
+    fill=$(( ( length / 2 ) - ( ${#heading} / 2 ) - ${#spacing} ))
+
+    for (( i=0; i<=fill; i++ )); do
+        fheading+=$character
+        if (( i == fill - 1 )); then
+            fheading="$fheading $heading $fheading"
+            break
+        fi
+    done
+
+    if (( ${#heading} % 2 )); then
+        fheading="${fheading::-1}"
+    fi
+
+    printf "%s\n" "$color$fheading$NOCOL"
+}
+
+printHelp() {
+#   -------------------------------------------------------
+#   Function for printing usage of script
+#   -------------------------------------------------------
+    printf 'usage: %s <domain> [-n NAMESERVER]\n' "$PROGNAME"
+    printf 'options:\n'
+    printf -- '  -n --nameserver     Specify a custom nameserver to use. Default is 1.1.1.1\n'
+    printf -- '  -h --help           Print this help message\n'
+    printf -- '  -v --version        Print version\n'
+
+    exit 0
+}
+
+printVersion() {
+#   -------------------------------------------------------
+#   Function for printing script version
+#   -------------------------------------------------------
+    printf '%s: v%s\n' "$NAME" "$VERS"
+}
+
+printRun() {
+    printVersion
+    printf 'Using nameserver: %s\n\n' "$NAMESERVER"
+}
+
+userError() {
+#   -------------------------------------------------------
+#   Function to handle invalid user input.
+#
+#   Invalid input will call this function, print an error
+#   message, print help information and exit with code 0
+#       Arguments:
+#           msg     Message to display to user
+#       Usage:
+#           usererror "Custom message"
+#   -------------------------------------------------------
+    local msg
+
+    msg="$1"
+    printf 'Error in input: %s\n\n' "$msg"
+    printHelp
+}
+
+validateCmds() {
+#   -------------------------------------------------------
+#   Function to validate the commands used in this script
+#   exist on the system
+#   -------------------------------------------------------
+    for i in "${CMDS[@]}"; do
+        if ! type "$i" &> /dev/null; then
+            printf '99' # Set custom error number to return
+        fi
+    done
+}
+
+validateIP() {
+#   -------------------------------------------------------
+#   Function for checking valid IPv4 address
+#
+#       Arguments:
+#           opt         IPv4 address
+#       Usage:
+#           validateIP "$ipv_address" OR
+#           validateIP "1.1.1.1"
+#   -------------------------------------------------------
+    local ip4reg ip6reg opt
+
+    ip4reg="^(([1-9]?[0-9]|1[0-9][0-9]|2([0-4][0-9]|5[0-5]))\.){3}([1-9]?[0-9]|1[0-9][0-9]|2([0-4][0-9]|5[0-5]))$"
+    ip6reg="([a-f0-9:]+:+)+[a-f0-9]+"
+    opt="$1"
+
+    if [[ "$opt" =~ $ip4reg ]] || [[ "$opt" =~ $ip6reg ]]; then
+        printf 'valid'
+    else
+        printf 'invalid'
+    fi
+}
+
+##### VALIDATION #####
+
+if [[ $(validateCmds) -eq 99 ]]; then
+# Validate the commands used in this script exist on the system
+    printf 'Error: this program uses the commands [%s]. One or more of these commands was not found.\n' "${CMDS[*]}"
+    printf 'Please ensure you have these packages installed before proceeding.'
+elif [[ $# -eq 0  ]]; then
+# Validate there's at least 1 argument
+    userError "$ERR_NODOM"
+elif [[ $# -gt 3 ]]; then
+# Validate the number of arguments supplied argument does not exceed 3
+    userError "$ERR_NUMARGS"
+elif [[ ! ${1,,} =~ $DOMREG ]] && [[ ! ${1,,} == -* ]]; then
+# Validate the first argument doesn't match domain regex AND doesn't start with a '-'
+    userError "$ERR_BADDOM"
+elif [[ ! ${1} =~ ^-[hv]$ ]] && [[ ! ${2,,} == -* ]] && [[ $# -gt 1 ]]; then
+# Validate that the entry after the first argument is a flag (string must start with '-')
+    userError "$ERR_INPUT '$*'"
+else
+    DOMAIN=${1,,}
+    while getopts :hnv-: flag; do
+    # Process and validate flags
+        case "$flag" in
+            # getopts doesn't support long argument parameters (e.g. --nameserver); this first case accommodates getopts' shortcoming
+            -)
+                case "$OPTARG" in
+                    help)
+                        # Print help message
+                        printHelp
+                        ;;
+                    nameserver)
+                        # Error if no nameserver is supplied after providing flag
+                        userError "$ERR_NODOM"
+                        ;;
+                    version)
+                        # Print version number
+                        printVersion
+                        ;;
+                    *)
+                        # Catch and error any additional unknown flags
+                        userError "$ERR_BADARG '--$OPTARG'"
+                        ;;
+                esac;;
+            h)
+                # Print help message
+                printHelp
+                ;;
+            n)
+                # Error if no nameserver is supplied after providing flag
+                userError "$ERR_NODOM"
+                ;;
+            v)
+                # Print version number
+                printVersion
+                ;;
+            *)
+                # Catch and error any additional unknown flags
+                userError "$ERR_BADARG '-$OPTARG'"
+                ;;
+        esac
+    done
+    OPTIND=2 # Change built-in variable OPTIN to 2, as <domain> is the first argument
+    while getopts :n-: flag; do
+        case "$flag" in
+            # getopts doesn't support long argument parameters (e.g. --nameserver); this first case accommodates getopts' shortcoming
+            -)
+                case "$OPTARG" in
+                    help)
+                        # Flags proceeding a domain should only be '-n' or '--nameserver'
+                        userError "$ERR_BADFLG"
+                        ;;
+                    nameserver)
+                        if [[ -z "${!OPTIND}" ]]; then
+                            # No nameserver supplied
+                            userError "$ERR_NONS"
+                        elif [[ $(validateIP "${!OPTIND}") == "invalid" ]]; then
+                            # Bad IPv4 address
+                            userError "$ERR_BADIP '$opt'"
+                        else
+                            NAMESERVER="${!OPTIND}"
+                            OPTIND=$(( OPTIND + 1 ))
+                        fi
+                        ;;
+                    version)
+                        # Flags proceeding a domain should only be '-n' or '--nameserver'
+                        userError "$ERR_BADFLG"
+                        ;;
+                    *)
+                        # Catch and error any additional unknown flags
+                        userError "$ERR_BADARG '-$OPTARG'"
+                        ;;
+                esac;;
+            n)
+                if [[ -z "${!OPTIND}" ]]; then
+                    # No nameserver supplied
+                    userError "$ERR_NONS"
+                elif [[ $(validateIP "${!OPTIND}") == "invalid" ]]; then
+                    # Bad IPv4 address
+                    userError "$ERR_BADIP '$opt'"
+                else
+                    NAMESERVER="${!OPTIND}"
+                    OPTIND=$(( OPTIND + 1 ))
+                fi
+                ;;
+            *)
+                # Catch and error any additional unknown flags
+                userError "$ERR_BADFLG"
+                ;;
+        esac
+    done
+fi
+
+##### PROCESSING #####
+
+# Print running message
+printRun
+
+# Functions
+# inb4: bUt aLl fUnCtIoNs ArE gLoBaL... it's called making your code readable, gosh
+
+printCmd() {
+#   -------------------------------------------------------
+#   Function to call and print the results of function or
+#   command.
+#       Arguments:
+#           heading         Heading to sectionalise
+#           cmd             Command to run
+#       Usage:
+#           printCmd "Heading 1" cmdToRun
+#   -------------------------------------------------------
+    local cmd heading
+
+    heading="${1^^}" # Capitalise heading
+    cmd="$2"
+
+    formatHeading "$heading" "-" "$MAGENTA"
+    $cmd
+    printf '\n'
+}
+
+printWhois() {
+#   -------------------------------------------------------
+#   Function to call WHOIS and provide output of registrant
+#   details
+#       Arguments:
+#          $DOMAIN      Global $DOMAIN variable
+#       Usage:
+#          printWhois
+#   -------------------------------------------------------
+    local filter info match
+
+    info=$(whois -I "$DOMAIN")
+    match=$(printf '%s' "$info" | grep "No match for \"${DOMAIN^^}\"")
+
+    if [[ -n "$match" ]]; then
+        printf "No WHOIS information found\n"
+    else
+        # As non-statndard returns of WHOIS information is identified, this section will grow
+        # Currently it serves *.fi TLD and general TLDs.
+        if [[ "$DOMAIN" == *.fi ]]; then
+            filter=$(printf '%s' "$info" | sed -n '/domain\.\.\./,/>>>/p' | grep '^[^:]*:\s*' | sed 's/^[ \t]*//;s/[ \t]*$//')
+        elif [[ "$DOMAIN" == *.uk ]]; then
+            filter=$(printf '%s' "$info" | sed -n '/Domain name/,/WHOIS lookup made at/p' | sed 's/^[ \t]*//;s/[ \t]*$//')
+        else
+            filter=$(printf '%s' "$info" | sed -n '/Domain Name/,/>>>/p' | grep '^[^:]*:\s*' | sed 's/^[ \t]*//;s/[ \t]*$//')
+        fi
+        printf '%s\n' "$filter"
+    fi
+}
+
+printSOA() {
+#   -------------------------------------------------------
+#   Function to get SOA details from $DOMAIN via dig
+#       Arguments:
+#          $DOMAIN      Global $DOMAIN variable
+#       Usage:
+#          printSOA
+#   -------------------------------------------------------
+    local soa errmsg expire mname refresh retry rname serial ttl
+
+    soa="$(dig +short SOA "$DOMAIN")"
+
+    if [[ ${#soa[@]} -gt 7 ]]; then
+        errmsg="error in SOA return. Too many arguments"
+        error $LINENO "$errmsg" 1
+    elif [[ -z "$soa" ]]; then
+        printf "No SOA record found\n"
+    else
+        read -r mname rname serial refresh retry expire ttl <<< "${soa[@]}"
+        rname=${rname/\./@}
+
+        printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
+        "MNAME: ${mname:0:-1}" \
+        "RNAME: ${rname:0:-1}" \
+        "Serial: $serial" \
+        "Refresh: $refresh" \
+        "Retry: $retry" \
+        "Expire: $expire" \
+        "TTL: $ttl"
+    fi
+}
+
+printAddress() {
+#   -------------------------------------------------------
+#   Function to get A/AAAA records from $DOMAIN via dig
+#       Arguments:
+#          $DOMAIN      Global $DOMAIN variable
+#       Usage:
+#          printAddress
+#   -------------------------------------------------------
+    local hosts hostname
+
+    # Convert output of command into an array, converting newlines into spaces for array
+    readarray -t hosts <<< "$(dig "$DOMAIN" A @"$NAMESERVER" "$DOMAIN" AAAA +short)"
+
+    if [[ -z "${hosts[*]}" ]]; then
+        printf "No A/AAAA records found\n"
+    else
+        for i in "${hosts[@]}"; do
+            hostname="$(dig +short -x "$i")"
+            if [[ -z "$hostname" ]]; then
+                printf '%s\n' "$i"
+            else
+                printf '%s >> %s\n' "$i" "$hostname"
+            fi
+        done
+    fi
+}
+
+printWWW() {
+#   -------------------------------------------------------
+#   Function to get www subdomain details from $DOMAIN via
+#   dig
+#       Arguments:
+#          $DOMAIN      Global $DOMAIN variable
+#       Usage:
+#          printWWW
+#   -------------------------------------------------------
+    local format www
+
+    read -r www <<< "$(dig +short www."$DOMAIN" | tr '\n' ' ')"
+
+    if [[ -z "$www" ]]; then
+        printf "No www information found\n"
+    else
+        www="www.$DOMAIN >> $www"
+        format="$(printf '%s' "$www" | tr '\n' ' >> ')"
+        printf '%s\n' "$format"
+    fi
+}
+
+printHTTP() {
+#   -------------------------------------------------------
+#   Function to get HTTP headers details from $DOMAIN via
+#   via cURL
+#       Arguments:
+#          $DOMAIN      Global $DOMAIN variable
+#       Usage:
+#          printHTTP
+#   -------------------------------------------------------
+    local http
+    http="$(curl -I "$DOMAIN" 2>/dev/null)"
+
+    if [[ -z "$http" ]]; then
+        printf "No HTTP information found\n"
+    else
+        printf '%s' "$http"
+    fi
+}
+
+printSSL() {
+#   -------------------------------------------------------
+#   Function to get SSL cert details from $DOMAIN via
+#   openssl
+#       Arguments:
+#          $DOMAIN      Global $DOMAIN variable
+#       Usage:
+#          printSSL
+#   -------------------------------------------------------
+    local aki alternatives cert dn issuer issuerdn \
+    serial ski usage validfrom validuntil # issuanceid country organisation
+
+    cert="$(printf '' | openssl s_client -showcerts -servername "$DOMAIN" -connect "$DOMAIN":443 2>/dev/null)"
+
+    if [[ -z "$cert" ]]; then
+        printf "No SSL certificate information found\n"
+    else
+        cert=$(printf '%s' "$cert" | openssl x509 -inform pem -noout -text)
+        issuerdn="$(printf '%s' "$cert" | awk 'BEGIN{FS="Issuer: "} NF==2{print $2}')"
+        issuer="$(printf '%s' "$issuerdn" | grep -oP 'O = "\K[^"]+')"
+        dn="$(printf '%s' "$cert" | awk 'BEGIN{FS="Subject: "} NF==2{print $2}')"
+        aki="keyid:$(printf '%s' "$cert" | awk 'BEGIN{FS="keyid:"} NF==2{print $2}')"
+        validfrom="$(printf '%s' "$cert" | awk 'BEGIN{FS="Not Before: "} NF==2{print $2}')"
+        validuntil="$(printf '%s' "$cert" | awk 'BEGIN{FS="Not After : "} NF==2{print $2}')"
+        ski="$(printf '%s' "$cert" | sed -n '/Subject Key Identifier:/{n;p;}' | xargs)"
+        serial="$(printf '%s' "$cert" | sed -n '/Serial Number:/{n;p;}' | xargs)"
+        usage="$(printf '%s' "$cert" | sed -n '/X509v3 Key Usage:/{n;p;}' | xargs)"
+
+        # TODO: Get Issuance ID, Country and Organisation from X509 Cert
+        # issuanceid="$(printf '%s' "$cert" | )"
+        # country="$(printf '%s' "$cert" | )"
+        # organisation="$(printf '%s' "$cert" | )"
+
+        if [[ -z "$issuer" ]]; then
+            issuer="$(printf '%s' "$issuerdn" | grep -oP 'O = \K[^,]+')"
+        fi
+
+        IFS=',' read -ra alternatives \
+        <<< "$(printf '%s' "$cert" | grep 'DNS:' | sed 's/DNS://g' | tr -d '[:space:]')"
+        IFS=$DEFAULTIFS
+
+        printf 'Issuer:\n  %s\n' "$issuer"
+        printf 'Subject DN:\n  %s\n' "$dn"
+        printf 'Issuer DN:\n  %s\n' "$issuerdn"
+        printf 'SKI:\n  %s\n' "$ski"
+        printf 'AKI:\n  %s\n' "$aki"
+        printf 'Serial:\n  %s\n' "$serial"
+        printf 'SAN:\n'; printf '  %s\n' "${alternatives[@]}"
+        printf 'Usage:\n  %s\n' "$usage"
+        printf 'Valid From:\n  %s\n' "$validfrom"
+        printf 'Valid Until:\n  %s\n' "$validuntil"
+
+        # printf 'Issuance ID:\n  %s\n' "$issuanceid"
+        # printf 'Country:\n  %s\n' "$country"
+        # printf 'Organisation:\n  %s\n' "$organisation"
+    fi
+}
+
+printMX() {
+#   -------------------------------------------------------
+#   Function to get MX details from $DOMAIN via dig
+#       Arguments:
+#          $DOMAIN      Global $DOMAIN variable
+#       Usage:
+#          printMX
+#   -------------------------------------------------------
+    local i info mxdomains mxip mxipptr
+
+    readarray -t mxdomains <<< "$(dig +short mx "$DOMAIN" | awk -F' ' '{print $2}' | sed -r 's/\.$//')"
+
+    if [[ -z "${mxdomains[*]}" ]]; then
+        printf "No MX records found\n"
+    else
+        for i in "${mxdomains[@]}"; do
+            readarray -t mxip <<< "$(dig +short "$i" A "$i" AAAA | sed -r 's/\.$//' | sort -u)"
+
+            for mx in "${mxip[@]}"; do
+                if [[ "$(validateIP "$mx")" == "valid" ]]; then
+                    mxipptr="$(dig +short -x "$mx" | tr '\n' ' ')"
+                    printf '%s >> %s >> %s\n' "$i" "$mx" "${mxipptr::-2}"
+                fi
+            done
+        done
+    fi
+}
+
+printTXT() {
+#   -------------------------------------------------------
+#   Function to get TXT details from $DOMAIN via dig
+#       Arguments:
+#          $DOMAIN      Global $DOMAIN variable
+#       Usage:
+#          printTXT
+#   -------------------------------------------------------
+    local txt
+
+    txt="$(dig +short TXT "$DOMAIN")"
+
+    if [[ -z "$txt" ]]; then
+        printf "No TXT records found\n"
+    else
+        printf '%s\n' "$txt"
+    fi
+}
+
+##### OUTPUT #####
+
+printCmd "whois information" printWhois
+printCmd "soa record" printSOA
+printCmd "a/aaaa records" printAddress
+printCmd "www record" printWWW
+printCmd "http headers" printHTTP
+printCmd "ssl certificate" printSSL
+printCmd "mx records" printMX
+printCmd "txt records" printTXT
