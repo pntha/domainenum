@@ -4,8 +4,8 @@
 # Script:           DomainEnum                                  #
 # Description:      Domain Enumeration Script                   #
 # Author:           Jeremy Box @pntha                           #
-# Date:             07-Sep-2021                                 #
-# Version:          1.0.1                                       #
+# Date:             02-Feb-2022                                 #
+# Version:          1.0.2                                       #
 #                                                               #
 # Contributors:                                                 #
 #     pepperfield                                               #
@@ -371,6 +371,8 @@ printWhois() {
             filter=$(printf '%s' "$info" | sed -n '/domain\.\.\./,/>>>/p' | grep '^[^:]*:\s*' | sed 's/^[ \t]*//;s/[ \t]*$//')
         elif [[ "$DOMAIN" == *.uk ]]; then
             filter=$(printf '%s' "$info" | sed -n '/Domain name/,/WHOIS lookup made at/p' | sed 's/^[ \t]*//;s/[ \t]*$//')
+        elif [[ "$DOMAIN" == *.ru ]] || [[ "$DOMAIN" == *.su ]]; then
+            filter=$(printf '%s' "$info" | sed -n '/domain:        '"${DOMAIN^^}"'/,/Last updated on/p' | sed 's/^[ \t]*//;s/[ \t]*$//')
         else
             filter=$(printf '%s' "$info" | sed -n '/Domain Name/,/>>>/p' | grep '^[^:]*:\s*' | sed 's/^[ \t]*//;s/[ \t]*$//')
         fi
