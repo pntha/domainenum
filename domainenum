@@ -2,7 +2,7 @@
 
 #################################################################
 # Script:           DomainEnum                                  #
-# Description:      Domain Enumeration Script                   #
+# Description:      Domain enumeration script using OSINT       #
 # Author:           Jeremy Box @pntha                           #
 # Date:             02-Feb-2022                                 #
 # Version:          1.0.2                                       #
@@ -373,6 +373,8 @@ printWhois() {
             filter=$(printf '%s' "$info" | sed -n '/Domain name/,/WHOIS lookup made at/p' | sed 's/^[ \t]*//;s/[ \t]*$//')
         elif [[ "$DOMAIN" == *.ru ]] || [[ "$DOMAIN" == *.su ]]; then
             filter=$(printf '%s' "$info" | sed -n '/domain:        '"${DOMAIN^^}"'/,/Last updated on/p' | sed 's/^[ \t]*//;s/[ \t]*$//')
+        elif [[ "$DOMAIN" == example.com ]]; then
+            filter=$(printf '%s' "$info" | sed -n '/domain:       '"${DOMAIN^^}"'/,/source:/p' | sed 's/^[ \t]*//;s/[ \t]*$//')
         else
             filter=$(printf '%s' "$info" | sed -n '/Domain Name/,/>>>/p' | grep '^[^:]*:\s*' | sed 's/^[ \t]*//;s/[ \t]*$//')
         fi
