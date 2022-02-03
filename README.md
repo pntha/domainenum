@@ -22,10 +22,10 @@ Linux
     chmod +x DomainEnum/domainenum
     ```
 
-3. Copy path of DomainEnum directory to your $PATH variable
+3. [Optional] Copy `domainenum` executable to `/usr/bin/` for usage without the full path
 
     ```bash
-    export PATH="$PATH:/path/to/DomainEnum"
+    sudo cp /path/to/domainenum /usr/bin/
     ```
 
 ## Usage
