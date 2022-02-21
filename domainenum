@@ -359,7 +359,7 @@ printWhois() {
 #   -------------------------------------------------------
     local filter info match
 
-    info=$(whois -I "$DOMAIN")
+    info=$(whois -I $(printf '%s' "$DOMAIN" | awk -F. '{print $(NF-1)"."$NF}'))
     match=$(printf '%s' "$info" | grep "No match for \"${DOMAIN^^}\"")
 
     if [[ -n "$match" ]]; then
@@ -473,7 +473,7 @@ printHTTP() {
 #          printHTTP
 #   -------------------------------------------------------
     local http
-    http="$(curl -I "$DOMAIN" 2>/dev/null)"
+    http="$(curl -m 30 -I "$DOMAIN" 2>/dev/null)"
 
     if [[ -z "$http" ]]; then
         printf "No HTTP information found\n"
