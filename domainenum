@@ -359,7 +359,7 @@ printWhois() {
 #   -------------------------------------------------------
     local filter info match
 
-    info=$(whois -I $(printf '%s' "$DOMAIN" | awk -F. '{print $(NF-1)"."$NF}'))
+    info=$(whois -I "$(printf '%s' "$DOMAIN" | awk -F. '{print $(NF-1)"."$NF}')")
     match=$(printf '%s' "$info" | grep "No match for \"${DOMAIN^^}\"")
 
     if [[ -n "$match" ]]; then
