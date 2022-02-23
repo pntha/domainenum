@@ -214,6 +214,7 @@ if [[ $(validateCmds) -eq 99 ]]; then
 # Validate the commands used in this script exist on the system
     printf 'Error: this program uses the commands [%s]. One or more of these commands was not found.\n' "${CMDS[*]}"
     printf 'Please ensure you have these packages installed before proceeding.'
+    exit 1
 elif [[ $# -eq 0  ]]; then
 # Validate there's at least 1 argument
     userError "$ERR_NODOM"
