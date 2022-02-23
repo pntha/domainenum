@@ -25,7 +25,7 @@ Linux
 3. [Optional] Copy `domainenum` executable to `/usr/bin/` for usage without the full path
 
     ```bash
-    sudo cp /path/to/domainenum /usr/bin/
+    sudo cp DomainEnum/domainenum /usr/bin/
     ```
 
 ## Usage
