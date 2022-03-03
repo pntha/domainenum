@@ -342,10 +342,10 @@ printCmd() {
     local cmd heading
 
     heading="${1^^}" # Capitalise heading
-    cmd="$2"
+    cmd=("${@:2}")
 
     formatHeading "$heading" "-" "$MAGENTA"
-    $cmd
+    "${cmd[@]}"
     printf '\n'
 }
 
