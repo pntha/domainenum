@@ -30,6 +30,16 @@ Linux
 
 ## Usage
 
+### Usage help
+
+```bash
+usage: domainenum <domain> [-n NAMESERVER]
+options:
+  -n --nameserver     Specify a custom nameserver to use. Default is 1.1.1.1
+  -h --help           Print this help message
+  -v --version        Print version
+```
+
 ### Without custom nameserver
 
 ```bash
