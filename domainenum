@@ -221,7 +221,7 @@ elif [[ $# -eq 0  ]]; then
 elif [[ $# -gt 3 ]]; then
 # Validate the number of arguments supplied argument does not exceed 3
     userError "$ERR_NUMARGS"
-elif [[ ! ${1,,} =~ $DOMREG ]] && [[ ! ${1,,} == -* ]] && [[ $(validateIP "${1,,}" == "valid") ]]; then
+elif [[ ! ${1,,} =~ $DOMREG ]] && [[ ! ${1,,} == -* ]] && [[ ! $(validateIP "${1,,}" == "valid") ]]; then
 # Validate the first argument doesn't match domain regex AND doesn't start with a '-' AND isn't an IP
     userError "$ERR_BADDOM"
 elif [[ ! ${1} =~ ^-[hv]$ ]] && [[ ! ${2,,} == -* ]] && [[ $# -gt 1 ]]; then
