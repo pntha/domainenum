@@ -4,8 +4,8 @@
 # Script:           DomainEnum                                  #
 # Description:      Domain enumeration script using OSINT       #
 # Author:           Jeremy Box @pntha                           #
-# Date:             23-Feb-2022                                 #
-# Version:          1.0.3a                                      #
+# Date:             03-Mar-2022                                 #
+# Version:          1.0.3b                                      #
 #                                                               #
 # Contributors:                                                 #
 #     pepperfield                                               #
@@ -358,10 +358,12 @@ printWhois() {
 #       Usage:
 #          printWhois
 #   -------------------------------------------------------
-    local filter info match
+    local apex filter info match
 
-    info=$(whois -I "$(printf '%s' "$DOMAIN" | awk -F. '{print $(NF-1)"."$NF}')")
-    match=$(printf '%s' "$info" | grep "No match for \"${DOMAIN^^}\"")
+    apex=$(printf '%s\n' "$DOMAIN" | awk -F. '{print $(NF-1)"."$NF}')
+
+    info=$(whois -I "$(printf '%s' "$apex" | awk -F. '{print $(NF-1)"."$NF}')")
+    match=$(printf '%s' "$info" | grep "No match for \"${apex^^}\"")
 
     if [[ -n "$match" ]]; then
         printf "No WHOIS information found\n"
@@ -372,10 +374,10 @@ printWhois() {
             filter=$(printf '%s' "$info" | sed -n '/domain\.\.\./,/>>>/p' | grep '^[^:]*:\s*' | sed 's/^[ \t]*//;s/[ \t]*$//')
         elif [[ "$DOMAIN" == *.uk ]]; then
             filter=$(printf '%s' "$info" | sed -n '/Domain name/,/WHOIS lookup made at/p' | sed 's/^[ \t]*//;s/[ \t]*$//')
-        elif [[ "$DOMAIN" == *.ru ]] || [[ "$DOMAIN" == *.su ]]; then
-            filter=$(printf '%s' "$info" | sed -n '/domain:        '"${DOMAIN^^}"'/,/Last updated on/p' | sed 's/^[ \t]*//;s/[ \t]*$//')
+        elif [[ "$DOMAIN" == *.ru ]] || [[ "$apex" == *.su ]]; then
+            filter=$(printf '%s' "$info" | sed -n '/domain:        '"${apex^^}"'/,/Last updated on/p' | sed 's/^[ \t]*//;s/[ \t]*$//')
         elif [[ "$DOMAIN" == example.com ]]; then
-            filter=$(printf '%s' "$info" | sed -n '/domain:       '"${DOMAIN^^}"'/,/source:/p' | sed 's/^[ \t]*//;s/[ \t]*$//')
+            filter=$(printf '%s' "$info" | sed -n '/domain:       '"${apex^^}"'/,/source:/p' | sed 's/^[ \t]*//;s/[ \t]*$//')
         else
             filter=$(printf '%s' "$info" | sed -n '/Domain Name/,/>>>/p' | grep '^[^:]*:\s*' | sed 's/^[ \t]*//;s/[ \t]*$//')
         fi
