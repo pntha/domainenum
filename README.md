@@ -1,8 +1,8 @@
-# DomainEnum
+# domainenum
 
-DomainEnum is a tool to enumerate various records of a domain and output to a linux terminal.
+`domainenum` is a tool to enumerate various records of a domain and output to a linux terminal.
 
-DomainEnum allows you to specify your own nameserver or use the default of 1.1.1.1.
+`domainenum` allows you to specify your own nameserver or use the default of 1.1.1.1.
 
 ## Requirements
 
@@ -13,19 +13,19 @@ Linux
 1. Clone the main file
 
     ```bash
-    git clone https://github.com/pntha/DomainEnum.git
+    git clone https://github.com/pntha/domainenum.git
     ```
 
 2. Make the script executable
 
     ```bash
-    chmod +x DomainEnum/domainenum
+    chmod +x domainenum/domainenum
     ```
 
 3. [Optional] Copy `domainenum` executable to `/usr/bin/` for usage without the full path
 
     ```bash
-    sudo cp DomainEnum/domainenum /usr/bin/
+    sudo cp domainenum/domainenum /usr/bin/
     ```
 
 ## Usage
