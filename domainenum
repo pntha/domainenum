@@ -354,22 +354,28 @@ printWhois() {
 #   Function to call WHOIS and provide output of registrant
 #   details
 #       Arguments:
-#          $DOMAIN      Global $DOMAIN variable
+#          $1         a Domain or subdomain
 #       Usage:
-#          printWhois
+#          printWhois "$DOMAIN"
 #   -------------------------------------------------------
-    local apex filter info match
+    # variables
+    local apex domain filter info match
 
-    apex=$(printf '%s\n' "$DOMAIN" | awk -F. '{print $(NF-1)"."$NF}')
+    # input
 
+    # $apex variable ensures that only the apex domain ($NF-1) with TLD ($NF) is queried against WhoIs
+    # protects against subdomain entries
+    domain="$1"
+    apex=$(printf '%s\n' "$domain" | awk -F. '{print $(NF-1)"."$NF}')
     info=$(whois -I "$(printf '%s' "$apex" | awk -F. '{print $(NF-1)"."$NF}')")
     match=$(printf '%s' "$info" | grep "No match for \"${apex^^}\"")
 
+    # output
     if [[ -n "$match" ]]; then
         printf "No WHOIS information found\n"
     else
         # As non-statndard returns of WHOIS information is identified, this section will grow
-        # Currently it serves *.fi TLD and general TLDs.
+        # Currently it serves *.fi, *.uk, *.ru and *.su TLDs and general TLDs.
         if [[ "$apex" == *.fi ]]; then
             filter=$(printf '%s' "$info" | sed -n '/domain\.\.\./,/>>>/p' | grep '^[^:]*:\s*' | sed 's/^[ \t]*//;s/[ \t]*$//')
         elif [[ "$apex" == *.uk ]]; then
@@ -389,14 +395,17 @@ printSOA() {
 #   -------------------------------------------------------
 #   Function to get SOA details from $DOMAIN via dig
 #       Arguments:
-#          $DOMAIN      Global $DOMAIN variable
+#          $1         a Domain or subdomain
 #       Usage:
-#          printSOA
+#          printSOA "$DOMAIN"
 #   -------------------------------------------------------
-    local soa errmsg expire mname refresh retry rname serial ttl
+    local domain errmsg expire mname refresh retry rname serial soa ttl
 
-    soa="$(dig +short SOA "$DOMAIN")"
+    # input
+    domain="$1"
+    soa="$(dig +short SOA "$domain")"
 
+    # output
     if [[ ${#soa[@]} -gt 7 ]]; then
         errmsg="error in SOA return. Too many arguments"
         error $LINENO "$errmsg" 1
@@ -421,15 +430,21 @@ printAddress() {
 #   -------------------------------------------------------
 #   Function to get A/AAAA records from $DOMAIN via dig
 #       Arguments:
-#          $DOMAIN      Global $DOMAIN variable
+#          $1         a Domain or subdomain
+#          $2         the Nameserver to search
 #       Usage:
-#          printAddress
+#          printAddress "$DOMAIN" "$NAMESERVER"
 #   -------------------------------------------------------
-    local hosts hostname
+    # variables
+    local domain hostname hosts nameserver
 
+    # input
+    domain="$1"
+    nameserver="$2"
     # Convert output of command into an array, converting newlines into spaces for array
-    readarray -t hosts <<< "$(dig "$DOMAIN" A @"$NAMESERVER" "$DOMAIN" AAAA +short)"
+    readarray -t hosts <<< "$(dig "$domain" A @"$nameserver" "$domain" AAAA +short)"
 
+    # output
     if [[ -z "${hosts[*]}" ]]; then
         printf "No A/AAAA records found\n"
     else
@@ -449,14 +464,18 @@ printWWW() {
 #   Function to get www subdomain details from $DOMAIN via
 #   dig
 #       Arguments:
-#          $DOMAIN      Global $DOMAIN variable
+#          $1         a Domain or subdomain
 #       Usage:
-#          printWWW
+#          printWWW "$DOMAIN"
 #   -------------------------------------------------------
-    local format www
+    # variables
+    local domain format www
 
-    read -r www <<< "$(dig +short www."$DOMAIN" | tr '\n' ' ')"
+    # input
+    domain="$1"
+    read -r www <<< "$(dig +short www."$domain" | tr '\n' ' ')"
 
+    # output
     if [[ -z "$www" ]]; then
         printf "No www information found\n"
     else
@@ -471,13 +490,18 @@ printHTTP() {
 #   Function to get HTTP headers details from $DOMAIN via
 #   via cURL
 #       Arguments:
-#          $DOMAIN      Global $DOMAIN variable
+#          $1         a Domain or subdomain
 #       Usage:
-#          printHTTP
+#          printHTTP "$DOMAIN"
 #   -------------------------------------------------------
-    local http
-    http="$(curl -m 30 -I "$DOMAIN" 2>/dev/null)"
+    # variables
+    local domain http
 
+    # input
+    domain="$1"
+    http="$(curl -m 30 -I "$domain" 2>/dev/null)"
+
+    # output
     if [[ -z "$http" ]]; then
         printf "No HTTP information found\n"
     else
@@ -490,15 +514,19 @@ printSSL() {
 #   Function to get SSL cert details from $DOMAIN via
 #   openssl
 #       Arguments:
-#          $DOMAIN      Global $DOMAIN variable
+#          $1         a Domain or subdomain
 #       Usage:
-#          printSSL
+#          printSSL "$DOMAIN"
 #   -------------------------------------------------------
-    local aki alternatives cert dn issuer issuerdn \
+    # variables
+    local aki alternatives cert domain dn issuer issuerdn \
     serial ski usage validfrom validuntil # issuanceid country organisation
 
-    cert="$(printf '' | openssl s_client -showcerts -servername "$DOMAIN" -connect "$DOMAIN":443 2>/dev/null)"
+    # input
+    domain="$1"
+    cert="$(printf '' | openssl s_client -showcerts -servername "$domain" -connect "$domain":443 2>/dev/null)"
 
+    # output
     if [[ -z "$cert" ]]; then
         printf "No SSL certificate information found\n"
     else
@@ -522,6 +550,7 @@ printSSL() {
             issuer="$(printf '%s' "$issuerdn" | grep -oP 'O = \K[^,]+')"
         fi
 
+        # save alternative DNS names from SSL certificate to array variable $alternatives
         IFS=',' read -ra alternatives \
         <<< "$(printf '%s' "$cert" | grep 'DNS:' | sed 's/DNS://g' | tr -d '[:space:]')"
         IFS=$DEFAULTIFS
@@ -547,14 +576,18 @@ printMX() {
 #   -------------------------------------------------------
 #   Function to get MX details from $DOMAIN via dig
 #       Arguments:
-#          $DOMAIN      Global $DOMAIN variable
+#          $1         a Domain or subdomain
 #       Usage:
-#          printMX
+#          printMX "$DOMAIN"
 #   -------------------------------------------------------
-    local i info mxdomains mxip mxipptr
+    # variables
+    local domain i info mxdomains mxip mxipptr
 
-    readarray -t mxdomains <<< "$(dig +short mx "$DOMAIN" | awk -F' ' '{print $2}' | sed -r 's/\.$//')"
+    # input
+    domain="$1"
+    readarray -t mxdomains <<< "$(dig +short mx "$domain" | awk -F' ' '{print $2}' | sed -r 's/\.$//')"
 
+    # output
     if [[ -z "${mxdomains[*]}" ]]; then
         printf "No MX records found\n"
     else
@@ -575,14 +608,18 @@ printTXT() {
 #   -------------------------------------------------------
 #   Function to get TXT details from $DOMAIN via dig
 #       Arguments:
-#          $DOMAIN      Global $DOMAIN variable
+#          $1         a Domain or subdomain
 #       Usage:
-#          printTXT
+#          printTXT "$DOMAIN"
 #   -------------------------------------------------------
-    local txt
+    # variables
+    local domain txt
 
-    txt="$(dig +short TXT "$DOMAIN")"
+    # input
+    domain="$1"
+    txt="$(dig +short TXT "$domain")"
 
+    # output
     if [[ -z "$txt" ]]; then
         printf "No TXT records found\n"
     else
@@ -592,11 +629,11 @@ printTXT() {
 
 ##### OUTPUT #####
 
-printCmd "whois information" printWhois
-printCmd "soa record" printSOA
-printCmd "a/aaaa records" printAddress
-printCmd "www record" printWWW
-printCmd "http headers" printHTTP
-printCmd "ssl certificate" printSSL
-printCmd "mx records" printMX
-printCmd "txt records" printTXT
+printCmd "whois information" printWhois "$DOMAIN"
+printCmd "soa record" printSOA "$DOMAIN"
+printCmd "a/aaaa records" printAddress "$DOMAIN" "$NAMESERVER"
+printCmd "www record" printWWW "$DOMAIN"
+printCmd "http headers" printHTTP "$DOMAIN"
+printCmd "ssl certificate" printSSL "$DOMAIN"
+printCmd "mx records" printMX "$DOMAIN"
+printCmd "txt records" printTXT "$DOMAIN"
